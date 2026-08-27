@@ -59,7 +59,7 @@ You are a meticulous code reviewer. Always check for null safety...
 ## Install
 
 ```bash
-pi install git:github.com/<you>/pi-subagent
+pi install git:github.com/giocom/pi-subagent
 ```
 
 Or from a local path:
