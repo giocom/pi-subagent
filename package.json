@@ -1,0 +1,55 @@
+{
+  "name": "pi-subagent",
+  "version": "1.0.0",
+  "description": "Pi extension that delegates tasks to specialized subagents with isolated context (single, parallel, and chain modes)",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-mono",
+    "pi-package",
+    "extension",
+    "subagent",
+    "delegation",
+    "parallel"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest --run",
+    "check": "npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.84.3",
+    "@earendil-works/pi-ai": "^0.84.3",
+    "@earendil-works/pi-coding-agent": "^0.84.3",
+    "@earendil-works/pi-tui": "^0.84.3",
+    "@types/node": "^26.0.0",
+    "typebox": "^1.3.7",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.7"
+  }
+}
