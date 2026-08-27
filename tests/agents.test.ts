@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { discoverAgents, formatAgentList } from "../src/agents.js";
 
 const tmpDirs: string[] = [];
@@ -89,6 +89,72 @@ describe("discoverAgents", () => {
 
 		const result = discoverAgents(cwd, "user");
 		expect(result.agents.every((a) => a.source !== "project")).toBe(true);
+	});
+
+	it("parses noContextFiles: true frontmatter", () => {
+		const cwd = makeTmpDir();
+		const agentsDir = path.join(cwd, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentsDir, "isolated.md"),
+			["---", "name: isolated", "description: Isolated agent", "noContextFiles: true", "---", "body"].join("\n"),
+		);
+
+		const result = discoverAgents(cwd, "project");
+		expect(result.agents[0].noContextFiles).toBe(true);
+	});
+
+	it("leaves noContextFiles undefined when not set (or falsy)", () => {
+		const cwd = makeTmpDir();
+		const agentsDir = path.join(cwd, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentsDir, "plain.md"),
+			["---", "name: plain", "description: Plain agent", "noContextFiles: false", "---", "body"].join("\n"),
+		);
+
+		const result = discoverAgents(cwd, "project");
+		expect(result.agents[0].noContextFiles).toBeUndefined();
+	});
+
+	it("warns when two agent files declare the same name", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const cwd = makeTmpDir();
+		const agentsDir = path.join(cwd, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentsDir, "a.md"),
+			["---", "name: dup", "description: first", "---", "body"].join("\n"),
+		);
+		fs.writeFileSync(
+			path.join(agentsDir, "b.md"),
+			["---", "name: dup", "description: second", "---", "body"].join("\n"),
+		);
+
+		const result = discoverAgents(cwd, "project");
+		expect(result.agents.filter((a) => a.name === "dup")).toHaveLength(1);
+		expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Agent "dup"'));
+		warnSpy.mockRestore();
+	});
+
+	it("does not warn when agent names are unique", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const cwd = makeTmpDir();
+		const agentsDir = path.join(cwd, ".pi", "agents");
+		fs.mkdirSync(agentsDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(agentsDir, "a.md"),
+			["---", "name: one", "description: first", "---", "body"].join("\n"),
+		);
+		fs.writeFileSync(
+			path.join(agentsDir, "b.md"),
+			["---", "name: two", "description: second", "---", "body"].join("\n"),
+		);
+
+		const result = discoverAgents(cwd, "project");
+		expect(result.agents).toHaveLength(2);
+		expect(warnSpy).not.toHaveBeenCalled();
+		warnSpy.mockRestore();
 	});
 });
 

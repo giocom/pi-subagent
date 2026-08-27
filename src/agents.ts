@@ -13,6 +13,8 @@ export interface AgentConfig {
 	description: string;
 	tools?: string[];
 	model?: string;
+	/** Skip AGENTS.md / project context files (passed as --no-context-files). */
+	noContextFiles?: boolean;
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
@@ -36,6 +38,7 @@ type AgentFrontmatter = {
 	description?: unknown;
 	tools?: unknown;
 	model?: unknown;
+	noContextFiles?: unknown;
 };
 
 /**
@@ -96,6 +99,7 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			description: frontmatter.description,
 			tools: parseToolList(frontmatter.tools),
 			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+			noContextFiles: frontmatter.noContextFiles === true ? true : undefined,
 			systemPrompt: body,
 			source,
 			filePath,
@@ -134,13 +138,25 @@ export function discoverAgents(cwd: string, scope: AgentScope): AgentDiscoveryRe
 
 	const agentMap = new Map<string, AgentConfig>();
 
+	// Warn when one agent definition silently shadows another (same `name`
+	// in different files, or project overriding user) so duplicates are easy to spot.
+	const setAgent = (agent: AgentConfig) => {
+		const existing = agentMap.get(agent.name);
+		if (existing && existing.filePath !== agent.filePath) {
+			console.warn(
+				`[pi-subagent] Agent "${agent.name}" (${agent.filePath}) overrides "${existing.filePath}".`
+			);
+		}
+		agentMap.set(agent.name, agent);
+	};
+
 	if (scope === "both") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
+		for (const agent of userAgents) setAgent(agent);
+		for (const agent of projectAgents) setAgent(agent);
 	} else if (scope === "user") {
-		for (const agent of userAgents) agentMap.set(agent.name, agent);
+		for (const agent of userAgents) setAgent(agent);
 	} else {
-		for (const agent of projectAgents) agentMap.set(agent.name, agent);
+		for (const agent of projectAgents) setAgent(agent);
 	}
 
 	return { agents: Array.from(agentMap.values()), projectAgentsDir };

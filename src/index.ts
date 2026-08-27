@@ -29,12 +29,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
+import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
+const DEFAULT_TIMEOUT_MINUTES = 10;
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -278,6 +279,7 @@ async function runSingleAgent(
 	task: string,
 	cwd: string | undefined,
 	step: number | undefined,
+	timeoutMinutes: number,
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
@@ -306,6 +308,7 @@ async function runSingleAgent(
 		args.push("--thinking", dispatchDefaults.thinkingLevel);
 	}
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	if (agent.noContextFiles) args.push("--no-context-files");
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -341,6 +344,8 @@ async function runSingleAgent(
 
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
+		let timedOut = false;
+		let timeout: NodeJS.Timeout | undefined;
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
@@ -381,11 +386,6 @@ async function runSingleAgent(
 					}
 					emitUpdate();
 				}
-
-				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
-					emitUpdate();
-				}
 			};
 
 			proc.stdout.on("data", (data) => {
@@ -399,14 +399,26 @@ async function runSingleAgent(
 				currentResult.stderr += data.toString();
 			});
 
-			proc.on("close", (code) => {
+			proc.on("close", (code, signal) => {
 				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
+				// A process killed by a signal (OOM, SIGKILL fallback) has code=null;
+				// treat any signal death as a failure, not a success.
+				resolve(code ?? (signal ? 1 : 0));
 			});
 
-			proc.on("error", () => {
+			proc.on("error", (err) => {
+				currentResult.stderr += (currentResult.stderr ? "\n" : "") + `Failed to start subagent: ${err.message}`;
 				resolve(1);
 			});
+
+			timeout = setTimeout(() => {
+				timedOut = true;
+				proc.kill("SIGTERM");
+				setTimeout(() => {
+					if (!proc.killed) proc.kill("SIGKILL");
+				}, 5000).unref?.();
+			}, timeoutMinutes * 60_000);
+			timeout.unref?.();
 
 			if (signal) {
 				const killProc = () => {
@@ -421,7 +433,10 @@ async function runSingleAgent(
 			}
 		});
 
+		clearTimeout(timeout);
 		currentResult.exitCode = exitCode;
+
+		if (timedOut) throw new Error(`Subagent timed out after ${timeoutMinutes} minute${timeoutMinutes > 1 ? "s" : ""}`);
 		if (wasAborted) throw new Error("Subagent was aborted");
 		return currentResult;
 	} finally {
@@ -462,6 +477,10 @@ const SubagentParams = Type.Object({
 	task: Type.Optional(Type.String({ description: "Task to delegate (for single mode)" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Array of {agent, task} for parallel execution" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Array of {agent, task} for sequential execution" })),
+	timeout: Type.Optional(Type.Number({
+		description: `Maximum run time in minutes for each agent (default ${DEFAULT_TIMEOUT_MINUTES}).`,
+		default: DEFAULT_TIMEOUT_MINUTES,
+	})),
 	agentScope: Type.Optional(AgentScopeSchema),
 	confirmProjectAgents: Type.Optional(
 		Type.Boolean({ description: "Prompt before running project-local agents. Default: true.", default: true }),
@@ -492,11 +511,13 @@ export default function (pi: ExtensionAPI) {
 		const modeIcon = mode === "single" ? "🤖" : mode === "parallel" ? "🤖×" : "🤖→🤖";
 
 		ctx.ui.setStatus("subagent", `${modeIcon} Running: ${agentNames}...`);
+	});
 
-		// Clean up status after a delay (subagent completes in a few seconds)
-		setTimeout(() => {
-			ctx.ui.setStatus("subagent", "");
-		}, 10000);
+	// Clear the status bar when a subagent tool call finishes (success or failure)
+	pi.on("tool_result", (event, ctx) => {
+		if (event.toolName === "subagent") {
+			ctx.ui.setStatus("subagent", undefined);
+		}
 	});
 
 	// Register /subagents command to list available agents
@@ -533,6 +554,7 @@ export default function (pi: ExtensionAPI) {
 
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			const agentScope: AgentScope = params.agentScope ?? "user";
+			const timeoutMinutes = params.timeout ?? DEFAULT_TIMEOUT_MINUTES;
 			const dispatchDefaults: DispatchDefaults = {
 				model: ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined,
 				thinkingLevel: ctx.thinkingLevel,
@@ -556,12 +578,12 @@ export default function (pi: ExtensionAPI) {
 				});
 
 			if (modeCount !== 1) {
-				const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
+				const available = formatAgentList(agents, 10);
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Invalid parameters. Provide exactly one mode.\nAvailable agents: ${available}`,
+							text: `Invalid parameters. Provide exactly one mode.\nAvailable agents: ${available.text}${available.remaining > 0 ? ` (+${available.remaining} more)` : ""}`,
 						},
 					],
 					details: makeDetails("single")([]),
@@ -624,6 +646,7 @@ export default function (pi: ExtensionAPI) {
 						taskWithContext,
 						step.cwd,
 						i + 1,
+						timeoutMinutes,
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
@@ -697,6 +720,7 @@ export default function (pi: ExtensionAPI) {
 						t.task,
 						t.cwd,
 						undefined,
+						timeoutMinutes,
 						signal,
 						// Per-task update callback
 						(partial) => {
@@ -728,6 +752,8 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("parallel")(results),
+					// Propagate partial failures so the model knows at least one task failed.
+					isError: successCount < results.length,
 				};
 			}
 
@@ -740,6 +766,7 @@ export default function (pi: ExtensionAPI) {
 					params.task,
 					params.cwd,
 					undefined,
+					timeoutMinutes,
 					signal,
 					onUpdate,
 					makeDetails("single"),
@@ -759,9 +786,14 @@ export default function (pi: ExtensionAPI) {
 				};
 			}
 
-			const available = agents.map((a) => `${a.name} (${a.source})`).join(", ") || "none";
+			const available = formatAgentList(agents, 10);
 			return {
-				content: [{ type: "text", text: `Invalid parameters. Available agents: ${available}` }],
+				content: [
+					{
+						type: "text",
+						text: `Invalid parameters. Available agents: ${available.text}${available.remaining > 0 ? ` (+${available.remaining} more)` : ""}`,
+					},
+				],
 				details: makeDetails("single")([]),
 			};
 		},
