@@ -1,5 +1,7 @@
 # pi-subagent
 
+[README-ko.md](./README-ko.md) — 한국어 버전
+
 Pi extension that delegates tasks to specialized subagents, each running in a separate `pi` process with an isolated context window.
 
 ## Features
@@ -37,6 +39,77 @@ You are a meticulous code reviewer. Always check for null safety...
 - `noContextFiles: true` launches the subagent with `--no-context-files`, so it does not load AGENTS.md / project context files. Useful for fully isolated, prompt-only agents.
 - The markdown body is injected as an appended system prompt.
 - When two agents declare the same `name`, the later one wins (project overrides user in `both` scope) and a warning is printed to the console.
+
+## Using Subagents
+
+Once installed, the extension registers a `subagent` tool. You can either ask the main agent to delegate in plain language ("delegate the code review to the code-reviewer agent") or invoke the tool directly.
+
+### 1. Create an agent file
+
+```bash
+mkdir -p ~/.pi/agent/agents
+```
+
+```markdown
+# ~/.pi/agent/agents/code-reviewer.md
+---
+name: code-reviewer
+description: Reviews code changes for bugs and style
+tools: [read, grep]
+---
+You are a meticulous code reviewer. Always check for null safety...
+```
+
+Project-level agents go in `.pi/agents/` inside the repository and require confirmation before running (unless `confirmProjectAgents: false` is passed).
+
+### 2. Single mode — one task, one agent
+
+```json
+{
+  "agent": "code-reviewer",
+  "task": "Review src/utils/parse.ts for bugs",
+  "cwd": "/path/to/project",      // optional
+  "timeout": 15                   // optional, minutes (default 10)
+}
+```
+
+### 3. Parallel mode — up to 8 independent tasks (concurrency 4)
+
+```json
+{
+  "tasks": [
+    { "agent": "code-reviewer", "task": "Review the auth module" },
+    { "agent": "test-writer", "task": "Write tests for the payment module" },
+    { "agent": "doc-writer", "task": "Update the API docs", "cwd": "/path/to/docs" }
+  ]
+}
+```
+
+Use parallel mode when the tasks do not depend on each other. If any task fails, the call is reported as an error but all per-task results are still included in the output.
+
+### 4. Chain mode — sequential steps with shared context
+
+```json
+{
+  "chain": [
+    { "agent": "researcher", "task": "Summarize the API surface of src/api.ts" },
+    { "agent": "doc-writer", "task": "Write documentation based on this summary: {previous}" }
+  ]
+}
+```
+
+Each step's output is substituted into the next step's task wherever you place `{previous}`. The chain stops at the first failed step and reports which step failed.
+
+### 5. Check what is available
+
+Run `/subagents` in the pi session to list all discovered agents and their source (user vs. project). Set `agentScope: "both"` (or `"project"`) in a call to include project-local agents, and `confirmProjectAgents: false` to skip the confirmation prompt.
+
+### Tips
+
+- **Isolate noisy work** — delegate long-running exploration (log analysis, large refactors, test runs) so the main session's context window stays small.
+- **Pin tools tightly** — always set `tools` in the agent frontmatter; subagents run non-interactively without confirmation prompts.
+- **Pin models per agent** — use `model:` in the frontmatter for cheap/fast models (summarization) while the parent session keeps a strong model.
+- **Use `noContextFiles: true`** for fully isolated, prompt-only agents that should not see your AGENTS.md / project context.
 
 ## Tool Parameters
 
