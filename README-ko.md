@@ -18,8 +18,9 @@
 - **안전장치** — 프로젝트 로컬 에이전트는 레포지토리에서 관리되므로 실행 전에 확인 프롬프트를 표시합니다 (호출마다 `confirmProjectAgents: false`로 비활성화 가능)
 - **컨텍스트 상속** — 서브에이전트는 부모 세션의 현재 모델(에이전트가 자체 모델을 지정하지 않은 경우 사고(thinking) 레벨 포함)를 상속합니다
 - **타임아웃** — 각 에이전트에 실행 시간 상한이 있습니다 (기본 10분, 호출마다 설정 가능). 한계를 초과하면 프로세스가 종료됩니다 (SIGTERM → SIGKILL)
+- **`subagent_manager` 도구** — 에이전트 정의 파일 추가/수정/삭제 (`create` / `update` / `delete`, 사용자·프로젝트 스코프의 `.md` 파일 편집)
 - **`/subagents` 명령** — 사용 가능한 모든 에이전트와 출처를 목록으로 표시
-- **내장 기본 에이전트** — 최초 로드 시 `planner`, `scout`, `websearcher`, `worker` 4개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다
+- **내장 기본 에이전트** — 최초 로드 시 `planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser` 5개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다
 
 ## 에이전트 정의 형식
 
@@ -47,16 +48,17 @@ You are a meticulous code reviewer. Always check for null safety...
 
 ### 1. 에이전트 파일 만들기
 
-기본 에이전트 4개는 최초 로드 시 `~/.pi/agent/agents/`에 자동 설치됩니다. 자유롭게 수정 또는 삭제해도 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`을 설정하면 자동 설치가 비활성화됩니다.
+기본 에이전트 5개는 최초 로드 시 `~/.pi/agent/agents/`에 자동 설치됩니다. 자유롭게 수정 또는 삭제해도 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`을 설정하면 자동 설치가 비활성화됩니다.
 
 | 에이전트 | 역할 | 도구 |
 |---|---|---|
-| `scout` | 코드베이스를 탐색하고 구조화된 결과(파일, 핵심 코드, 구조) 반환 | read, grep, find, ls, bash |
-| `planner` | scout 결과를 바탕으로 단계별 상세 구현 계획 수립 | read, grep, find, ls |
-| `worker` | 계획 구현: 코드 수정, 빌드/테스트/lint로 검증 | read, grep, find, ls, edit, write, bash |
+| `planner` | 필요 시 코드베이스 분석 후 단계별 상세 구현 계획 수립 | read, grep, find, ls |
+| `coder` | 계획 구현: 코드 수정, 빌드/테스트/lint로 검증 | read, grep, find, ls, edit, write, bash |
+| `reviewer` | 코드 변경 사항 리뷰: 버그, 엣지 케이스, 보안 이슈, 테스트 공백 발견 | read, grep, find, ls, bash |
 | `websearcher` | 웹 검색 / URL 읽기로 외부 자료 조사 및 구조화 | websearch_searxng_web_search, websearch_web_url_read |
+| `agentbrowser` | 브라우저 자동화: 사이트 탐색, 폼 입력, 클릭, 스크린샷, 데이터 추출 (`agent-browser` CLI 사용) | bash, read |
 
-전형적인 파이프라인: `scout` → `planner` → `worker` (chain 모드로 각 단계가 `{previous}`를 통해 이전 결과를 받도록 구성).
+전형적인 파이프라인: `planner` → `coder` → `reviewer` (chain 모드로 각 단계가 `{previous}`를 통해 이전 결과를 받도록 구성).
 
 사용자 정의 에이전트는 `~/.pi/agent/agents/`(또는 `.pi/agents/`)에 마크다운 파일을 만들면 됩니다:
 
@@ -120,6 +122,28 @@ pi 세션에서 `/subagents`를 실행하면 발견된 모든 에이전트와 �
 - **도구를 빡빡하게 지정하세요** — 에이전트 frontmatter에 항상 `tools`를 설정하세요. 서브에이전트는 확인 프롬프트 없이 비대화적으로 실행됩니다.
 - **에이전트별로 모델을 고정하세요** — frontmatter의 `model:`로 저렴한/빠른 모델(요약 작업)을 쓰고, 부모 세션은 강력한 모델을 유지할 수 있습니다.
 - **`noContextFiles: true` 사용** — AGENTS.md / 프로젝트 컨텍스트를 보지 말아야 하는 완전히 격리된 프롬프트 전용 에이전트에 사용하세요.
+
+### 6. 에이전트 관리 (추가/수정/삭제)
+
+`subagent_manager` 도구가 에이전트 정의 파일을 직접 편집하므로 수동 파일 편집이 필요 없습니다:
+
+```jsonc
+// 새로운 사용자 수준 에이전트 생성
+{ "action": "create", "name": "reviewer", "scope": "user",
+  "description": "버그 여부를 검토하는 리뷰어", "systemPrompt": "You are a reviewer...",
+  "tools": ["read", "grep", "find"] }
+
+// 제공한 필드만 수정 (tools: [] 은 도구 목록 초기화, model: "" 은 모델 오버라이드 해제)
+{ "action": "update", "name": "reviewer", "scope": "user", "model": "anthropic/claude-sonnet-4-6" }
+
+// 에이전트 삭제
+{ "action": "delete", "name": "reviewer", "scope": "user" }
+```
+
+참고:
+- `scope: "project"` 는 가장 가까운 `.pi/agents/` 디렉터리를 대상입니다 (`create` 시 자동으로 생성).
+- `create` 는 `overwrite: true` 를 설정하지 않으면 기존 에이전트를 덮어쓰지 않습니다.
+- 새로 만든 에이전트는 재시작 없이 즉시 `subagent` 도구에서 사용할 수 있습니다.
 
 ## 도구 파라미터
 

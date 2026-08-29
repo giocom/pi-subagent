@@ -31,6 +31,9 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.js";
 import { installDefaultAgents } from "./default-agents.js";
+import { createAgent, deleteAgent, updateAgent, type ManageResult } from "./manage.js";
+
+type ManagerDetails = ManageResult & { success: boolean };
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -490,7 +493,7 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	// Install default subagents (planner, scout, websearcher, worker) if missing.
+	// Install default subagents (planner, coder, websearcher, reviewer, agentbrowser) if missing.
 	const createdDefaults = installDefaultAgents();
 	if (createdDefaults.length > 0) {
 		console.log(`[pi-subagent] Installed default agents: ${createdDefaults.join(", ")}`);
@@ -543,7 +546,7 @@ export default function (pi: ExtensionAPI) {
 				const source = a.source === "user" ? "👤" : "📁";
 				return `  ${source} **${a.name}**${model}\n     ${a.description}${tools}`;
 			});
-			const msg = `## Available Subagents (${agents.length})\n\n${lines.join("\n\n")}\n\n👤 = user-level (~/.pi/agent/agents/)\n📁 = project-level (.pi/agents/)`;
+			const msg = `## Available Subagents (${agents.length})\n\n${lines.join("\n\n")}\n\n👤 = user-level (~/.pi/agent/agents/)\n📁 = project-level (.pi/agents/)\n\nUse the **subagent_manager** tool to create, update, or delete agents.`;
 			ctx.ui.notify(msg, "info");
 		},
 	});
@@ -1155,6 +1158,170 @@ export default function (pi: ExtensionAPI) {
 
 			const text = result.content[0];
 			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+		},
+	});
+
+	// Register /subagent_manager tool to create, update, and delete agents
+	const ManagerScopeSchema = StringEnum(["user", "project"] as const, {
+		description: 'Which agent directory to modify. Default: "user" (~/.pi/agent/agents/). "project" targets .pi/agents/.',
+		default: "user",
+	});
+
+	const ManagerActionSchema = StringEnum(["create", "update", "delete"] as const, {
+		description: "Management action to perform.",
+		default: "create",
+	});
+
+	const SubagentManagerParams = Type.Object({
+		action: Type.Optional(ManagerActionSchema),
+		name: Type.String({ description: "Agent name (1-64 chars: letters, digits, '-', '_'; starts with a letter)" }),
+		scope: Type.Optional(ManagerScopeSchema),
+		description: Type.Optional(
+			Type.String({ description: "One-line description of the agent's role (required for create)" }),
+		),
+		systemPrompt: Type.Optional(
+			Type.String({ description: "Full system prompt / instructions for the agent (required for create)" }),
+		),
+		tools: Type.Optional(
+			Type.Array(Type.String(), { description: "Allowed tool names. Omit to inherit all tools." }),
+		),
+		model: Type.Optional(
+			Type.String({ description: "Optional model override (provider/model-id). Empty string clears the override." }),
+		),
+		noContextFiles: Type.Optional(
+			Type.Boolean({ description: "Skip AGENTS.md / project context files for this agent. Default: false." }),
+		),
+		overwrite: Type.Optional(
+			Type.Boolean({ description: "For create: replace an existing agent with the same name. Default: false.", default: false }),
+		),
+	});
+
+	pi.registerTool({
+		name: "subagent_manager",
+		label: "Subagent Manager",
+		description: [
+			"Create, update, or delete subagent definition files (.md) used by the subagent tool.",
+			"action: create (needs description + systemPrompt, set overwrite=true to replace), update (change any provided fields), delete (removes the agent file).",
+			`scope "user" -> ${path.join(getAgentDir(), "agents")}, scope "project" -> .pi/agents/ (nearest to cwd, created if missing for create).`,
+		].join(" "),
+		parameters: SubagentManagerParams,
+
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const action = params.action ?? "create";
+			const scope = params.scope ?? "user";
+
+			try {
+				let result: ManageResult;
+
+				switch (action) {
+					case "create": {
+						if (!params.description) throw new Error("description is required for action: create");
+						if (!params.systemPrompt) throw new Error("systemPrompt is required for action: create");
+						result = await createAgent({
+							name: params.name,
+							cwd: ctx.cwd,
+							scope,
+							description: params.description,
+							systemPrompt: params.systemPrompt,
+							tools: params.tools,
+							model: params.model || undefined,
+							noContextFiles: params.noContextFiles,
+							overwrite: params.overwrite ?? false,
+						});
+						break;
+					}
+					case "update": {
+						const hasChanges =
+							params.description !== undefined ||
+							params.systemPrompt !== undefined ||
+							params.tools !== undefined ||
+							params.model !== undefined ||
+							params.noContextFiles !== undefined;
+						if (!hasChanges)
+							throw new Error(
+								"No fields provided to update. Provide at least one of: description, systemPrompt, tools, model, noContextFiles.",
+							);
+						result = await updateAgent({
+							name: params.name,
+							cwd: ctx.cwd,
+							scope,
+							description: params.description,
+							systemPrompt: params.systemPrompt,
+							tools: params.tools,
+							model: params.model,
+							noContextFiles: params.noContextFiles,
+						});
+						break;
+					}
+					case "delete": {
+						result = await deleteAgent({ name: params.name, cwd: ctx.cwd, scope });
+						break;
+					}
+					default:
+						throw new Error(`Unknown action: ${action}`);
+				}
+
+				const verb = result.action === "created" ? "✅ Created" : result.action === "updated" ? "✏️ Updated" : "🗑️ Deleted";
+				let text = `${verb} subagent "${result.agent}" [${result.scope}]\nFile: ${result.filePath}`;
+				if (result.fields) {
+					const parts: string[] = [`description: ${result.fields.description}`];
+					if (result.fields.tools?.length) parts.push(`tools: ${result.fields.tools.join(", ")}`);
+					else parts.push("tools: (inherit all)");
+					if (result.fields.model) parts.push(`model: ${result.fields.model}`);
+					if (result.fields.noContextFiles) parts.push("noContextFiles: true");
+					text += `\n${parts.join("\n")}`;
+					if (result.action !== "deleted")
+					text += `\n\nUse the subagent tool with agent: "${result.agent}" to invoke it.`;
+				}
+
+				return {
+					content: [{ type: "text" as const, text }],
+					details: { ...result, success: true },
+				};
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				return {
+					content: [{ type: "text" as const, text: `Subagent management failed: ${message}` }],
+					details: {
+						action: action === "delete" ? "deleted" : action === "update" ? "updated" : "created",
+						agent: params.name,
+						scope,
+						filePath: "",
+						success: false,
+					} as ManagerDetails,
+					isError: true,
+				};
+			}
+		},
+
+		renderCall(args, theme) {
+			const action = args.action ?? "create";
+			const icon = action === "create" ? "＋" : action === "update" ? "✎" : "－";
+			const extra: string[] = [];
+			if (args.description) extra.push(`desc: ${args.description.slice(0, 40)}`);
+			if (args.tools?.length) extra.push(`tools: ${args.tools.join(", ")}`);
+			if (args.overwrite) extra.push("overwrite");
+			const border = theme.fg("dim", "─");
+			let text =
+				theme.fg("toolTitle", theme.bold("🤖  SUBAGENT MANAGER  ")) +
+				theme.fg("muted", border.repeat(26)) +
+				"\n" +
+				theme.fg("accent", theme.bold(`${action}`)) +
+				theme.fg("muted", ` [${args.scope ?? "user"}]`) +
+				"\n" +
+				theme.fg("dim", `${icon} Agent: `) + theme.fg("toolTitle", args.name || "...");
+			for (const e of extra) text += `\n${theme.fg("dim", e)}`;
+			return new Text(text, 0, 0);
+		},
+
+		renderResult(result, _opts, theme) {
+			const text = result.content[0];
+			const isError = (result.details as ManagerDetails | undefined)?.success === false;
+			const body = text?.type === "text" ? text.text : "(no output)";
+			const lines = body.split("\n").map((line) =>
+				theme.fg(isError ? "error" : "toolOutput", line),
+			);
+			return new Text(lines.join("\n"), 0, 0);
 		},
 	});
 }

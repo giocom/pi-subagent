@@ -18,8 +18,9 @@ Pi extension that delegates tasks to specialized subagents, each running in a se
 - **Safety** — project-local agents are repo-controlled, so a confirmation prompt is shown before running them (disable per call with `confirmProjectAgents: false`)
 - **Context inheritance** — subagents inherit the current model (and thinking level, when the agent does not pin its own model) from the parent session
 - **Timeout** — each agent has a run-time limit (default 10 minutes, configurable per call); the process is terminated (SIGTERM → SIGKILL) when it exceeds the limit
+- **`subagent_manager` tool** — create, update, and delete agent definitions (`create` / `update` / `delete` on user- or project-scope `.md` files)
 - **`/subagents` command** — lists all available agents and their sources
-- **Built-in default agents** — on first load, four ready-to-use agents (`planner`, `scout`, `websearcher`, `worker`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
+- **Built-in default agents** — on first load, five ready-to-use agents (`planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
 
 ## Agent Definition Format
 
@@ -47,16 +48,17 @@ Once installed, the extension registers a `subagent` tool. You can either ask th
 
 ### 1. Create an agent file
 
-Four default agents are installed automatically on first load into `~/.pi/agent/agents/` — edit or delete them as you like, they will never be overwritten. Set `PI_SUBAGENT_NO_DEFAULT_AGENTS=1` to disable the auto-install.
+Five default agents are installed automatically on first load into `~/.pi/agent/agents/` — edit or delete them as you like, they will never be overwritten. Set `PI_SUBAGENT_NO_DEFAULT_AGENTS=1` to disable the auto-install.
 
 | Agent | Role | Tools |
 |---|---|---|
-| `scout` | Explores the codebase and returns structured findings (files, key code, architecture) | read, grep, find, ls, bash |
-| `planner` | Turns scout findings into a detailed, step-by-step implementation plan | read, grep, find, ls |
-| `worker` | Implements the plan: edits code, verifies with build/test/lint | read, grep, find, ls, edit, write, bash |
+| `planner` | Explores the code as needed and produces a detailed, step-by-step implementation plan | read, grep, find, ls |
+| `coder` | Implements the plan: edits code, verifies with build/test/lint | read, grep, find, ls, edit, write, bash |
+| `reviewer` | Reviews code changes for bugs, edge cases, security issues, and test gaps | read, grep, find, ls, bash |
 | `websearcher` | Researches external sources via web search / URL reading and structures the findings | websearch_searxng_web_search, websearch_web_url_read |
+| `agentbrowser` | Browser automation: navigates sites, fills forms, clicks, takes screenshots, extracts data (via the `agent-browser` CLI) | bash, read |
 
-A typical pipeline: `scout` → `planner` → `worker` (use chain mode so each step receives the previous output via `{previous}`).
+A typical pipeline: `planner` → `coder` → `reviewer` (use chain mode so each step receives the previous output via `{previous}`).
 
 For custom agents, create a markdown file in `~/.pi/agent/agents/` (or `.pi/agents/`):
 
@@ -120,6 +122,28 @@ Run `/subagents` in the pi session to list all discovered agents and their sourc
 - **Pin tools tightly** — always set `tools` in the agent frontmatter; subagents run non-interactively without confirmation prompts.
 - **Pin models per agent** — use `model:` in the frontmatter for cheap/fast models (summarization) while the parent session keeps a strong model.
 - **Use `noContextFiles: true`** for fully isolated, prompt-only agents that should not see your AGENTS.md / project context.
+
+### 6. Manage agents (add / update / delete)
+
+The `subagent_manager` tool edits agent definition files directly, so no manual file editing is needed:
+
+```jsonc
+// Create a new user-level agent
+{ "action": "create", "name": "reviewer", "scope": "user",
+  "description": "Reviews code for bugs", "systemPrompt": "You are a reviewer...",
+  "tools": ["read", "grep", "find"] }
+
+// Update only the provided fields (tools: [] clears the tool list, model: "" clears the model)
+{ "action": "update", "name": "reviewer", "scope": "user", "model": "anthropic/claude-sonnet-4-6" }
+
+// Delete an agent
+{ "action": "delete", "name": "reviewer", "scope": "user" }
+```
+
+Notes:
+- `scope: "project"` targets the nearest `.pi/agents/` directory (created automatically for `create`).
+- `create` refuses to overwrite an existing agent unless `overwrite: true` is set.
+- New agents are immediately available to the `subagent` tool — no restart needed.
 
 ## Tool Parameters
 
