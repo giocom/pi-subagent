@@ -30,6 +30,7 @@ import {
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.js";
+import { installDefaultAgents } from "./default-agents.js";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -489,6 +490,12 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
+	// Install default subagents (planner, scout, websearcher, worker) if missing.
+	const createdDefaults = installDefaultAgents();
+	if (createdDefaults.length > 0) {
+		console.log(`[pi-subagent] Installed default agents: ${createdDefaults.join(", ")}`);
+	}
+
 	// Show TUI status when subagent tool is called
 	pi.on("tool_call", async (event, ctx) => {
 		if (!isToolCallEventType("subagent", event)) return;

@@ -19,6 +19,7 @@ Pi extension that delegates tasks to specialized subagents, each running in a se
 - **Context inheritance** — subagents inherit the current model (and thinking level, when the agent does not pin its own model) from the parent session
 - **Timeout** — each agent has a run-time limit (default 10 minutes, configurable per call); the process is terminated (SIGTERM → SIGKILL) when it exceeds the limit
 - **`/subagents` command** — lists all available agents and their sources
+- **Built-in default agents** — on first load, four ready-to-use agents (`planner`, `scout`, `websearcher`, `worker`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
 
 ## Agent Definition Format
 
@@ -46,9 +47,18 @@ Once installed, the extension registers a `subagent` tool. You can either ask th
 
 ### 1. Create an agent file
 
-```bash
-mkdir -p ~/.pi/agent/agents
-```
+Four default agents are installed automatically on first load into `~/.pi/agent/agents/` — edit or delete them as you like, they will never be overwritten. Set `PI_SUBAGENT_NO_DEFAULT_AGENTS=1` to disable the auto-install.
+
+| Agent | Role | Tools |
+|---|---|---|
+| `scout` | Explores the codebase and returns structured findings (files, key code, architecture) | read, grep, find, ls, bash |
+| `planner` | Turns scout findings into a detailed, step-by-step implementation plan | read, grep, find, ls |
+| `worker` | Implements the plan: edits code, verifies with build/test/lint | read, grep, find, ls, edit, write, bash |
+| `websearcher` | Researches external sources via web search / URL reading and structures the findings | websearch_searxng_web_search, websearch_web_url_read |
+
+A typical pipeline: `scout` → `planner` → `worker` (use chain mode so each step receives the previous output via `{previous}`).
+
+For custom agents, create a markdown file in `~/.pi/agent/agents/` (or `.pi/agents/`):
 
 ```markdown
 # ~/.pi/agent/agents/code-reviewer.md

@@ -19,6 +19,7 @@
 - **컨텍스트 상속** — 서브에이전트는 부모 세션의 현재 모델(에이전트가 자체 모델을 지정하지 않은 경우 사고(thinking) 레벨 포함)를 상속합니다
 - **타임아웃** — 각 에이전트에 실행 시간 상한이 있습니다 (기본 10분, 호출마다 설정 가능). 한계를 초과하면 프로세스가 종료됩니다 (SIGTERM → SIGKILL)
 - **`/subagents` 명령** — 사용 가능한 모든 에이전트와 출처를 목록으로 표시
+- **내장 기본 에이전트** — 최초 로드 시 `planner`, `scout`, `websearcher`, `worker` 4개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다
 
 ## 에이전트 정의 형식
 
@@ -46,9 +47,18 @@ You are a meticulous code reviewer. Always check for null safety...
 
 ### 1. 에이전트 파일 만들기
 
-```bash
-mkdir -p ~/.pi/agent/agents
-```
+기본 에이전트 4개는 최초 로드 시 `~/.pi/agent/agents/`에 자동 설치됩니다. 자유롭게 수정 또는 삭제해도 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`을 설정하면 자동 설치가 비활성화됩니다.
+
+| 에이전트 | 역할 | 도구 |
+|---|---|---|
+| `scout` | 코드베이스를 탐색하고 구조화된 결과(파일, 핵심 코드, 구조) 반환 | read, grep, find, ls, bash |
+| `planner` | scout 결과를 바탕으로 단계별 상세 구현 계획 수립 | read, grep, find, ls |
+| `worker` | 계획 구현: 코드 수정, 빌드/테스트/lint로 검증 | read, grep, find, ls, edit, write, bash |
+| `websearcher` | 웹 검색 / URL 읽기로 외부 자료 조사 및 구조화 | websearch_searxng_web_search, websearch_web_url_read |
+
+전형적인 파이프라인: `scout` → `planner` → `worker` (chain 모드로 각 단계가 `{previous}`를 통해 이전 결과를 받도록 구성).
+
+사용자 정의 에이전트는 `~/.pi/agent/agents/`(또는 `.pi/agents/`)에 마크다운 파일을 만들면 됩니다:
 
 ```markdown
 # ~/.pi/agent/agents/code-reviewer.md
