@@ -31,7 +31,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents, formatAgentList } from "./agents.js";
 import { installDefaultAgents } from "./default-agents.js";
-import { createAgent, deleteAgent, updateAgent, type ManageResult } from "./manage.js";
+import { createAgent, deleteAgent, renameAgent, updateAgent, type ManageResult } from "./manage.js";
 
 type ManagerDetails = ManageResult & { success: boolean };
 
@@ -1200,14 +1200,20 @@ export default function (pi: ExtensionAPI) {
 		default: "user",
 	});
 
-	const ManagerActionSchema = StringEnum(["create", "update", "delete"] as const, {
-		description: "Management action to perform.",
+	const ManagerActionSchema = StringEnum(["create", "update", "rename", "delete"] as const, {
+		description: "Management action to perform. Use rename to change an agent's name (requires newName).",
 		default: "create",
 	});
 
 	const SubagentManagerParams = Type.Object({
 		action: Type.Optional(ManagerActionSchema),
-		name: Type.String({ description: "Agent name (1-64 chars: letters, digits, '-', '_'; starts with a letter)" }),
+		name: Type.String({ description: "Agent name (1-64 chars: letters, digits, '-', '_'; starts with a letter). For rename: the current name." }),
+		newName: Type.Optional(
+			Type.String({
+				description:
+					"For rename only: the new agent name. Moves the file and updates the frontmatter; do NOT create a new agent to rename one (the old file would remain).",
+			}),
+		),
 		scope: Type.Optional(ManagerScopeSchema),
 		description: Type.Optional(
 			Type.String({ description: "One-line description of the agent's role (required for create)" }),
@@ -1233,8 +1239,8 @@ export default function (pi: ExtensionAPI) {
 		name: "subagent_manager",
 		label: "Subagent Manager",
 		description: [
-			"Create, update, or delete subagent definition files (.md) used by the subagent tool.",
-			"action: create (needs description + systemPrompt, set overwrite=true to replace), update (change any provided fields), delete (removes the agent file).",
+			"Create, update, rename, or delete subagent definition files (.md) used by the subagent tool.",
+			"action: create (needs description + systemPrompt, set overwrite=true to replace), update (change any provided fields), rename (name = current name, newName = new name; moves the file so no stale file is left behind), delete (removes the agent file).",
 			`scope "user" -> ${path.join(getAgentDir(), "agents")}, scope "project" -> .pi/agents/ (nearest to cwd, created if missing for create).`,
 		].join(" "),
 		parameters: SubagentManagerParams,
@@ -1286,6 +1292,17 @@ export default function (pi: ExtensionAPI) {
 						});
 						break;
 					}
+					case "rename": {
+						if (!params.newName) throw new Error("newName is required for action: rename");
+						result = await renameAgent({
+							name: params.name,
+							newName: params.newName,
+							cwd: ctx.cwd,
+							scope,
+							overwrite: params.overwrite ?? false,
+						});
+						break;
+					}
 					case "delete": {
 						result = await deleteAgent({ name: params.name, cwd: ctx.cwd, scope });
 						break;
@@ -1294,8 +1311,17 @@ export default function (pi: ExtensionAPI) {
 						throw new Error(`Unknown action: ${action}`);
 				}
 
-				const verb = result.action === "created" ? "✅ Created" : result.action === "updated" ? "✏️ Updated" : "🗑️ Deleted";
-				let text = `${verb} subagent "${result.agent}" [${result.scope}]\nFile: ${result.filePath}`;
+				const verb =
+					result.action === "created"
+						? "✅ Created"
+						: result.action === "updated"
+							? "✏️ Updated"
+							: result.action === "renamed"
+								? "🔁 Renamed"
+								: "🗑️ Deleted";
+				let text = result.action === "renamed"
+					? `${verb} subagent "${result.oldAgent}" → "${result.agent}" [${result.scope}]\nFile: ${result.filePath}`
+					: `${verb} subagent "${result.agent}" [${result.scope}]\nFile: ${result.filePath}`;
 				if (result.fields) {
 					const parts: string[] = [`description: ${result.fields.description}`];
 					if (result.fields.tools?.length) parts.push(`tools: ${result.fields.tools.join(", ")}`);
@@ -1316,7 +1342,14 @@ export default function (pi: ExtensionAPI) {
 				return {
 					content: [{ type: "text" as const, text: `Subagent management failed: ${message}` }],
 					details: {
-						action: action === "delete" ? "deleted" : action === "update" ? "updated" : "created",
+						action:
+							action === "delete"
+								? "deleted"
+								: action === "update"
+									? "updated"
+									: action === "rename"
+										? "renamed"
+										: "created",
 						agent: params.name,
 						scope,
 						filePath: "",
@@ -1329,8 +1362,9 @@ export default function (pi: ExtensionAPI) {
 
 		renderCall(args, theme) {
 			const action = args.action ?? "create";
-			const icon = action === "create" ? "＋" : action === "update" ? "✎" : "－";
+			const icon = action === "create" ? "＋" : action === "update" ? "✎" : action === "rename" ? "➜" : "－";
 			const extra: string[] = [];
+			if (args.newName) extra.push(`→ ${args.newName}`);
 			if (args.description) extra.push(`desc: ${args.description.slice(0, 40)}`);
 			if (args.tools?.length) extra.push(`tools: ${args.tools.join(", ")}`);
 			if (args.overwrite) extra.push("overwrite");

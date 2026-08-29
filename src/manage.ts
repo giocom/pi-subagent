@@ -100,8 +100,10 @@ type UpdateFrontmatter = {
 };
 
 export interface ManageResult {
-	action: "created" | "updated" | "deleted";
+	action: "created" | "updated" | "renamed" | "deleted";
 	agent: string;
+	/** Previous agent name (rename only). */
+	oldAgent?: string;
 	scope: "user" | "project";
 	filePath: string;
 	/** Updated fields after the operation (absent for delete). */
@@ -218,6 +220,75 @@ export async function updateAgent(options: UpdateAgentOptions): Promise<ManageRe
 	});
 
 	return { action: "updated", agent: options.name, scope: options.scope, filePath, fields: next };
+}
+
+export interface RenameAgentOptions {
+	/** Current agent name (source). */
+	name: string;
+	/** New agent name (target). */
+	newName: string;
+	cwd: string;
+	scope: "user" | "project";
+	/** Overwrite an existing agent with the new name (default false). */
+	overwrite?: boolean;
+}
+
+/**
+ * Rename an agent: moves the definition file to <newName>.md and updates the
+ * `name:` frontmatter field in place. This is the only supported rename path —
+ * creating a new agent with the new name would leave the old file behind.
+ */
+export async function renameAgent(options: RenameAgentOptions): Promise<ManageResult> {
+	assertValidName(options.name);
+	assertValidName(options.newName);
+	if (options.name === options.newName) {
+		throw new Error(`New name is identical to the current name "${options.name}".`);
+	}
+
+	const dir = resolveAgentsDir(options.cwd, options.scope, { createIfMissing: false });
+	const fromPath = agentFilePath(dir, options.name);
+	const toPath = agentFilePath(dir, options.newName);
+
+	if (!fs.existsSync(fromPath)) {
+		throw new Error(`Agent "${options.name}" not found in ${dir}. Nothing to rename.`);
+	}
+	if (fs.existsSync(toPath) && !options.overwrite) {
+		throw new Error(
+			`Agent "${options.newName}" already exists at ${toPath}. Use overwrite: true to replace it.`,
+		);
+	}
+
+	const raw = await fs.promises.readFile(fromPath, "utf-8");
+	const { frontmatter, body } = parseFrontmatter<UpdateFrontmatter>(raw);
+
+	const fields: ManageAgentFields = {
+		description:
+			typeof frontmatter.description === "string" ? frontmatter.description : "",
+		tools: parseToolListLoose(frontmatter.tools),
+		model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
+		noContextFiles: frontmatter.noContextFiles === true,
+		systemPrompt: body,
+	};
+	if (!fields.description.trim()) {
+		throw new Error(`Agent "${options.name}" has an empty description; cannot rename.`);
+	}
+
+	const content = serializeAgentFile(fields, options.newName);
+	await withFileMutationQueue(fromPath, async () => {
+		await withFileMutationQueue(toPath, async () => {
+			await fs.promises.writeFile(toPath, content, "utf-8");
+			await fs.promises.unlink(fromPath);
+		});
+	});
+
+	return {
+		action: "renamed",
+		agent: options.newName,
+		oldAgent: options.name,
+		scope: options.scope,
+		filePath: toPath,
+		fields,
+	};
 }
 
 export interface DeleteAgentOptions {

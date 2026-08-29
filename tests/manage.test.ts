@@ -7,6 +7,7 @@ import {
 	createAgent,
 	deleteAgent,
 	isValidAgentName,
+	renameAgent,
 	serializeAgentFile,
 	updateAgent,
 } from "../src/manage.js";
@@ -275,6 +276,80 @@ describe("deleteAgent", () => {
 	it("fails for a missing agent", async () => {
 		const cwd = makeTmpDir();
 		await expect(deleteAgent({ name: "ghost", cwd, scope: "user" })).rejects.toThrow(/not found/);
+	});
+});
+
+describe("renameAgent", () => {
+	it("moves the file and updates the frontmatter name", async () => {
+		const cwd = makeTmpDir();
+		const created = await createAgent({
+			name: "websearcher",
+			cwd,
+			scope: "user",
+			description: "Searches the web",
+			systemPrompt: "You are a websearcher.",
+			tools: ["websearch"],
+			model: "anthropic/claude-sonnet-4-6",
+		});
+
+		const result = await renameAgent({ name: "websearcher", newName: "researcher", cwd, scope: "user" });
+		expect(result.action).toBe("renamed");
+		expect(result.agent).toBe("researcher");
+		expect(result.oldAgent).toBe("websearcher");
+		expect(fs.existsSync(created.filePath)).toBe(false);
+		expect(fs.existsSync(result.filePath)).toBe(true);
+
+		const content = fs.readFileSync(result.filePath, "utf-8");
+		expect(content).toContain("name: researcher");
+		expect(content).toContain("description: Searches the web");
+		expect(content).toContain("tools: [websearch]");
+		expect(content).toContain("model: anthropic/claude-sonnet-4-6");
+		expect(content).toContain("You are a websearcher.");
+	});
+
+	it("renames a project-scope agent", async () => {
+		const cwd = makeTmpDir();
+		const created = await createAgent({
+			name: "old",
+			cwd,
+			scope: "project",
+			description: "d",
+			systemPrompt: "p",
+		});
+
+		const result = await renameAgent({ name: "old", newName: "new", cwd, scope: "project" });
+		expect(result.filePath).toBe(path.join(cwd, ".pi", "agents", "new.md"));
+		expect(fs.existsSync(created.filePath)).toBe(false);
+	});
+
+	it("refuses to overwrite an existing agent unless asked", async () => {
+		const cwd = makeTmpDir();
+		await createAgent({ name: "a", cwd, scope: "user", description: "d", systemPrompt: "p" });
+		await createAgent({ name: "b", cwd, scope: "user", description: "d", systemPrompt: "p" });
+
+		await expect(
+			renameAgent({ name: "a", newName: "b", cwd, scope: "user" }),
+		).rejects.toThrow(/already exists/);
+		// "a" must still exist after the failed rename
+		expect(fs.existsSync(agentFilePath(path.join(userAgentRoot, "agents"), "a"))).toBe(true);
+
+		const result = await renameAgent({ name: "a", newName: "b", cwd, scope: "user", overwrite: true });
+		expect(result.action).toBe("renamed");
+	});
+
+	it("rejects same-name, invalid, and missing agents", async () => {
+		const cwd = makeTmpDir();
+		await createAgent({ name: "a", cwd, scope: "user", description: "d", systemPrompt: "p" });
+
+		await expect(
+			renameAgent({ name: "a", newName: "a", cwd, scope: "user" }),
+		).rejects.toThrow(/identical/);
+		await expect(
+			renameAgent({ name: "a", newName: "bad name", cwd, scope: "user" }),
+		).rejects.toThrow(/Invalid agent name/);
+		await expect(
+			renameAgent({ name: "ghost", newName: "b", cwd, scope: "user" }),
+		).rejects.toThrow(/not found/);
 	});
 });
 
