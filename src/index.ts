@@ -38,7 +38,9 @@ type ManagerDetails = ManageResult & { success: boolean };
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
-const PER_TASK_OUTPUT_CAP = 50 * 1024;
+const DEFAULT_OUTPUT_CAP_BYTES = 50 * 1024;
+/** Cap for the {previous} substitution in chain mode. Intermediate step output flows into the next agent's prompt, so it is capped tighter than final output. */
+const CHAIN_PREVIOUS_CAP_BYTES = 32 * 1024;
 const DEFAULT_TIMEOUT_MINUTES = 10;
 
 function formatTokens(count: number): string {
@@ -196,15 +198,43 @@ function getResultOutput(result: SingleResult): string {
 	return getFinalOutput(result.messages) || "(no output)";
 }
 
-function truncateParallelOutput(output: string): string {
-	const byteLength = Buffer.byteLength(output, "utf8");
-	if (byteLength <= PER_TASK_OUTPUT_CAP) return output;
-
-	let truncated = output.slice(0, PER_TASK_OUTPUT_CAP);
-	while (Buffer.byteLength(truncated, "utf8") > PER_TASK_OUTPUT_CAP) {
+/**
+ * Truncates a UTF-8 string to `maxBytes` without splitting a multi-byte
+ * character. Returns the input unchanged when it fits.
+ */
+function truncateToBytes(input: string, maxBytes: number): string {
+	if (Buffer.byteLength(input, "utf8") <= maxBytes) return input;
+	let truncated = input.slice(0, maxBytes);
+	while (Buffer.byteLength(truncated, "utf8") > maxBytes) {
 		truncated = truncated.slice(0, -1);
 	}
-	return `${truncated}\n\n[Output truncated: ${byteLength - Buffer.byteLength(truncated, "utf8")} bytes omitted. Full output preserved in tool details.]`;
+	return truncated;
+}
+
+/**
+ * Protects the parent context window from huge subagent output: keeps the head
+ * of the output within the byte cap and appends a marker with the omitted size.
+ * The complete output is still available in the tool details (expanded TUI view).
+ */
+export function truncateOutput(output: string, maxBytes: number = DEFAULT_OUTPUT_CAP_BYTES): string {
+	const byteLength = Buffer.byteLength(output, "utf8");
+	if (byteLength <= maxBytes) return output;
+	const truncated = truncateToBytes(output, maxBytes);
+	const omitted = byteLength - Buffer.byteLength(truncated, "utf8");
+	return `${truncated}\n\n[Output truncated: ${omitted} bytes omitted. Full output preserved in tool details.]`;
+}
+
+/**
+ * Truncation for the {previous} substitution in chain mode. The next agent
+ * cannot see the parent's tool details, so the marker tells it to scope its
+ * work to the visible part of the previous output.
+ */
+export function truncateChainPrevious(output: string, maxBytes: number = CHAIN_PREVIOUS_CAP_BYTES): string {
+	const byteLength = Buffer.byteLength(output, "utf8");
+	if (byteLength <= maxBytes) return output;
+	const truncated = truncateToBytes(output, maxBytes);
+	const omitted = byteLength - Buffer.byteLength(truncated, "utf8");
+	return `${truncated}\n\n[Previous step output truncated: ${omitted} bytes omitted. Use only the part shown above.]`;
 }
 
 type DisplayItem = { type: "text"; text: string } | { type: "toolCall"; name: string; args: Record<string, any> };
@@ -665,17 +695,19 @@ export default function (pi: ExtensionAPI) {
 
 					const isError = isFailedResult(result);
 					if (isError) {
-						const errorMsg = getResultOutput(result);
+						const errorMsg = truncateOutput(getResultOutput(result));
 						return {
 							content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}): ${errorMsg}` }],
 							details: makeDetails("chain")(results),
 							isError: true,
 						};
 					}
-					previousOutput = getFinalOutput(result.messages);
+					// Cap intermediate output before it is substituted into the next step's prompt.
+					previousOutput = truncateChainPrevious(getFinalOutput(result.messages));
 				}
+				const lastOutput = getFinalOutput(results[results.length - 1].messages);
 				return {
-					content: [{ type: "text", text: getFinalOutput(results[results.length - 1].messages) || "(no output)" }],
+					content: [{ type: "text", text: lastOutput ? truncateOutput(lastOutput) : "(no output)" }],
 					details: makeDetails("chain")(results),
 				};
 			}
@@ -748,7 +780,7 @@ export default function (pi: ExtensionAPI) {
 
 				const successCount = results.filter((r) => !isFailedResult(r)).length;
 				const summaries = results.map((r) => {
-					const output = truncateParallelOutput(getResultOutput(r));
+					const output = truncateOutput(getResultOutput(r));
 					const status = isFailedResult(r)
 						? `failed${r.stopReason && r.stopReason !== "end" ? ` (${r.stopReason})` : ""}`
 						: "completed";
@@ -783,15 +815,16 @@ export default function (pi: ExtensionAPI) {
 				);
 				const isError = isFailedResult(result);
 				if (isError) {
-					const errorMsg = getResultOutput(result);
+					const errorMsg = truncateOutput(getResultOutput(result));
 					return {
 						content: [{ type: "text", text: `Agent ${result.stopReason || "failed"}: ${errorMsg}` }],
 						details: makeDetails("single")([result]),
 						isError: true,
 					};
 				}
+				const finalOutput = getFinalOutput(result.messages);
 				return {
-					content: [{ type: "text", text: getFinalOutput(result.messages) || "(no output)" }],
+					content: [{ type: "text", text: finalOutput ? truncateOutput(finalOutput) : "(no output)" }],
 					details: makeDetails("single")([result]),
 				};
 			}

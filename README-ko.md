@@ -18,6 +18,7 @@
 - **안전장치** — 프로젝트 로컬 에이전트는 레포지토리에서 관리되므로 실행 전에 확인 프롬프트를 표시합니다 (호출마다 `confirmProjectAgents: false`로 비활성화 가능)
 - **컨텍스트 상속** — 서브에이전트는 부모 세션의 현재 모델(에이전트가 자체 모델을 지정하지 않은 경우 사고(thinking) 레벨 포함)를 상속합니다
 - **타임아웃** — 각 에이전트에 실행 시간 상한이 있습니다 (기본 10분, 호출마다 설정 가능). 한계를 초과하면 프로세스가 종료됩니다 (SIGTERM → SIGKILL)
+- **출력 truncate** — 방대한 서브에이전트 출력이 부모 컨텍스트 윈도우를 오염시키지 않도록 보호합니다. 최종 출력(single / parallel / chain)은 50 KiB에서 head-truncate되고 생략된 바이트 수를 알리는 마커가 붙습니다. 전체 출력은 도구 디테일(Ctrl+O로 확장)에 보존됩니다. chain의 `{previous}` 치환은 다음 에이전트 프롬프트 부풀림을 막기 위해 32 KiB로 더 엄격하게 제한됩니다
 - **`subagent_manager` 도구** — 에이전트 정의 파일 추가/수정/삭제 (`create` / `update` / `delete`, 사용자·프로젝트 스코프의 `.md` 파일 편집)
 - **`/subagents` 명령** — 사용 가능한 모든 에이전트와 출처를 목록으로 표시
 - **내장 기본 에이전트** — 최초 로드 시 `planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser` 5개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다

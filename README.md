@@ -18,6 +18,7 @@ Pi extension that delegates tasks to specialized subagents, each running in a se
 - **Safety** — project-local agents are repo-controlled, so a confirmation prompt is shown before running them (disable per call with `confirmProjectAgents: false`)
 - **Context inheritance** — subagents inherit the current model (and thinking level, when the agent does not pin its own model) from the parent session
 - **Timeout** — each agent has a run-time limit (default 10 minutes, configurable per call); the process is terminated (SIGTERM → SIGKILL) when it exceeds the limit
+- **Output truncation** — huge subagent output is protected from flooding the parent context window. Final output (single / parallel / chain) is head-truncated at 50 KiB with a marker stating how many bytes were omitted; the complete output is preserved in the tool details (expand with Ctrl+O). Chain `{previous}` substitution is capped tighter at 32 KiB so one verbose step cannot bloat the next agent's prompt
 - **`subagent_manager` tool** — create, update, and delete agent definitions (`create` / `update` / `delete` on user- or project-scope `.md` files)
 - **`/subagents` command** — lists all available agents and their sources
 - **Built-in default agents** — on first load, five ready-to-use agents (`planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
