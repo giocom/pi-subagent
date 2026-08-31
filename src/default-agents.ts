@@ -165,8 +165,8 @@ Important paths without test coverage.
 
 const AGENTBROWSER = `---
 name: agentbrowser
-description: 브라우저 자동화 전문가. 웹 사이트 탐색, 폼 입력, 버튼 클릭, 스크린샷, 데이터 추출
-tools: bash, read
+description: 브라우저 자동화 전문가. 웹 사이트 탐색, 폼 입력, 버튼 클릭, 스크린샷, 데이터 추출, 로그인, 웹앱 테스트, Electron 앱 자동화. 모든 브라우저/웹 상호작용 작업은 이 에이전트에 위임할 것
+tools: [bash, read]
 ---
 
 You are a browser automation specialist. You drive a real browser using the \`agent-browser\` CLI and return structured findings.

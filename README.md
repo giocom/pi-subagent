@@ -57,7 +57,7 @@ Five default agents are installed automatically on first load into `~/.pi/agent/
 | `coder` | Implements the plan: edits code, verifies with build/test/lint | read, grep, find, ls, edit, write, bash |
 | `reviewer` | Reviews code changes for bugs, edge cases, security issues, and test gaps | read, grep, find, ls, bash |
 | `websearcher` | Researches external sources via web search / URL reading and structures the findings | websearch_searxng_web_search, websearch_web_url_read |
-| `agentbrowser` | Browser automation: navigates sites, fills forms, clicks, takes screenshots, extracts data (via the `agent-browser` CLI) | bash, read |
+| `agentbrowser` | Browser automation: navigates sites, fills forms, clicks, takes screenshots, extracts data, login, web app testing, Electron app automation — delegate all browser/web interaction tasks to it (via the `agent-browser` CLI) | bash, read |
 
 A typical pipeline: `planner` → `coder` → `reviewer` (use chain mode so each step receives the previous output via `{previous}`).
 

@@ -57,7 +57,7 @@ You are a meticulous code reviewer. Always check for null safety...
 | `coder` | 계획 구현: 코드 수정, 빌드/테스트/lint로 검증 | read, grep, find, ls, edit, write, bash |
 | `reviewer` | 코드 변경 사항 리뷰: 버그, 엣지 케이스, 보안 이슈, 테스트 공백 발견 | read, grep, find, ls, bash |
 | `websearcher` | 웹 검색 / URL 읽기로 외부 자료 조사 및 구조화 | websearch_searxng_web_search, websearch_web_url_read |
-| `agentbrowser` | 브라우저 자동화: 사이트 탐색, 폼 입력, 클릭, 스크린샷, 데이터 추출 (`agent-browser` CLI 사용) | bash, read |
+| `agentbrowser` | 브라우저 자동화: 사이트 탐색, 폼 입력, 클릭, 스크린샷, 데이터 추출, 로그인, 웹앱 테스트, Electron 앱 자동화 — 모든 브라우저/웹 상호작용 작업은 이 에이전트에 위임 (`agent-browser` CLI 사용) | bash, read |
 
 전형적인 파이프라인: `planner` → `coder` → `reviewer` (chain 모드로 각 단계가 `{previous}`를 통해 이전 결과를 받도록 구성).
 
