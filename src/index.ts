@@ -1028,7 +1028,7 @@ export default function (pi: ExtensionAPI) {
 
 				const endTime = formatTimestamp(new Date());
 				let text =
-				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
+				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
 				"\n" +
 				theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 				"\n" +
@@ -1125,7 +1125,7 @@ export default function (pi: ExtensionAPI) {
 				const agents = details.results.map((r) => r.agent).join(" → ");
 				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
@@ -1217,7 +1217,7 @@ export default function (pi: ExtensionAPI) {
 				const agents = details.results.map((r) => r.agent).join(", ");
 				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
