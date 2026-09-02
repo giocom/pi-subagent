@@ -41,7 +41,12 @@ const COLLAPSED_ITEM_COUNT = 10;
 const DEFAULT_OUTPUT_CAP_BYTES = 50 * 1024;
 /** Cap for the {previous} substitution in chain mode. Intermediate step output flows into the next agent's prompt, so it is capped tighter than final output. */
 const CHAIN_PREVIOUS_CAP_BYTES = 32 * 1024;
-const DEFAULT_TIMEOUT_MINUTES = 10;
+/** Hard cap on how long a single subagent process may run before it is force-killed. */
+const DEFAULT_TIMEOUT_MINUTES = 30;
+/** Watchdog interval: how often each running subagent's output is checked for error loops. */
+const WATCHDOG_INTERVAL_MS = 5 * 60_000;
+/** Consecutive watchdog checks that must see an error state before the subagent is killed (first error → wait one more cycle, second → kill). */
+const WATCHDOG_ERROR_STRIKES = 2;
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -379,7 +384,9 @@ async function runSingleAgent(
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
 		let timedOut = false;
+		let watchdogKilled = false;
 		let timeout: NodeJS.Timeout | undefined;
+		let watchdog: NodeJS.Timeout | undefined;
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
@@ -445,6 +452,43 @@ async function runSingleAgent(
 				resolve(1);
 			});
 
+			// Watchdog: every WATCHDOG_INTERVAL_MS, check the subagent's latest output.
+			// No error → keep waiting. Error detected → wait one more cycle; if the next
+			// check still sees the error state, kill the process and report the error message.
+			let errorStrikes = 0;
+			const killForErrorLoop = (reason: string) => {
+				if (watchdogKilled || proc.killed) return;
+				watchdogKilled = true;
+				currentResult.errorMessage = reason;
+				currentResult.stopReason = "error";
+				proc.kill("SIGTERM");
+				setTimeout(() => {
+					if (!proc.killed) proc.kill("SIGKILL");
+				}, 5000).unref?.();
+			};
+			watchdog = setInterval(() => {
+				if (watchdogKilled || wasAborted || timedOut || proc.killed) return;
+				let inErrorState = false;
+				for (let i = currentResult.messages.length - 1; i >= 0; i--) {
+					const msg = currentResult.messages[i];
+					if (msg.role !== "assistant") continue;
+					inErrorState = msg.stopReason === "error" || Boolean(msg.errorMessage) || msg.stopReason === "aborted";
+					break;
+				}
+				if (inErrorState) {
+					errorStrikes++;
+					if (errorStrikes >= WATCHDOG_ERROR_STRIKES) {
+						const detail = currentResult.errorMessage || "(no error message received)";
+						killForErrorLoop(
+						`Subagent terminated by watchdog: repeated errors detected across ${errorStrikes} checks (one every ${WATCHDOG_INTERVAL_MS / 60_000} minutes). Last error: ${detail}`,
+						);
+					}
+				} else {
+					errorStrikes = 0;
+				}
+			}, WATCHDOG_INTERVAL_MS);
+			watchdog.unref?.();
+
 			timeout = setTimeout(() => {
 				timedOut = true;
 				proc.kill("SIGTERM");
@@ -468,9 +512,11 @@ async function runSingleAgent(
 		});
 
 		clearTimeout(timeout);
+		clearInterval(watchdog);
 		currentResult.exitCode = exitCode;
 
 		if (timedOut) throw new Error(`Subagent timed out after ${timeoutMinutes} minute${timeoutMinutes > 1 ? "s" : ""}`);
+		if (watchdogKilled) return currentResult; // already marked as error with the subagent's error message
 		if (wasAborted) throw new Error("Subagent was aborted");
 		return currentResult;
 	} finally {
@@ -589,6 +635,7 @@ export default function (pi: ExtensionAPI) {
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
 			`Default agent scope is "user" (from ${path.join(getAgentDir(), "agents")}).`,
 			`To enable project-local agents in ${CONFIG_DIR_NAME}/agents, set agentScope: "both" (or "project").`,
+			`Watchdog: each agent is checked every ${WATCHDOG_INTERVAL_MS / 60_000} minutes; if it stays in an error state across consecutive checks it is terminated and its error message is reported.`,
 		].join(" "),
 		parameters: SubagentParams,
 

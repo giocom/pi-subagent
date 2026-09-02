@@ -17,7 +17,8 @@ Pi extension that delegates tasks to specialized subagents, each running in a se
 - **Rich TUI rendering** — themed call/result rendering with per-task token/cost usage stats, tool call previews, and markdown output
 - **Safety** — project-local agents are repo-controlled, so a confirmation prompt is shown before running them (disable per call with `confirmProjectAgents: false`)
 - **Context inheritance** — subagents inherit the current model (and thinking level, when the agent does not pin its own model) from the parent session
-- **Timeout** — each agent has a run-time limit (default 10 minutes, configurable per call); the process is terminated (SIGTERM → SIGKILL) when it exceeds the limit
+- **Timeout** — each agent has a run-time limit (default 30 minutes, configurable per call); the process is terminated (SIGTERM → SIGKILL) when it exceeds the limit
+- **Watchdog** — every 5 minutes, each running subagent's latest output is checked. No error → keep waiting. An error state detected on one check → wait one more cycle; if the next check still sees the error state, the process is terminated (SIGTERM → SIGKILL) and the subagent's error message is reported as a failure
 - **Output truncation** — huge subagent output is protected from flooding the parent context window. Final output (single / parallel / chain) is head-truncated at 50 KiB with a marker stating how many bytes were omitted; the complete output is preserved in the tool details (expand with Ctrl+O). Chain `{previous}` substitution is capped tighter at 32 KiB so one verbose step cannot bloat the next agent's prompt
 - **`subagent_manager` tool** — create, update, and delete agent definitions (`create` / `update` / `delete` on user- or project-scope `.md` files)
 - **`/subagents` command** — lists all available agents and their sources
@@ -82,7 +83,7 @@ Project-level agents go in `.pi/agents/` inside the repository and require confi
   "agent": "code-reviewer",
   "task": "Review src/utils/parse.ts for bugs",
   "cwd": "/path/to/project",      // optional
-  "timeout": 15                   // optional, minutes (default 10)
+  "timeout": 45                   // optional, minutes (default 30)
 }
 ```
 
@@ -155,12 +156,13 @@ Notes:
 | `chain` | Chain mode: array of `{ agent, task, cwd? }`; `{previous}` in a task is replaced with the prior step's output |
 | `agentScope` | `user` (default), `project`, or `both` |
 | `confirmProjectAgents` | Prompt before running project-local agents (default `true`) |
-| `timeout` | Maximum run time per agent in minutes (default `10`) |
+| `timeout` | Maximum run time per agent in minutes (default `30`) |
 | `cwd` | Working directory for the agent process (single mode) |
 
 ### Failure semantics
 
-- A task is considered failed when the process exits non-zero (including signal deaths such as OOM), the agent reports an `error`/`aborted` stop reason, or it hits the timeout.
+- A task is considered failed when the process exits non-zero (including signal deaths such as OOM), the agent reports an `error`/`aborted` stop reason, it hits the timeout, or the watchdog kills it after repeated errors.
+- **Watchdog behavior**: every 5 minutes each subagent is checked. A single error state on a check only triggers another wait cycle; the process is killed (and its last error message reported) when consecutive checks keep seeing the error state.
 - In parallel mode, a call is marked as an error (`isError`) when **any** task fails; the text output still includes the per-task results.
 - In chain mode, the chain stops at the first failed step and reports which step failed.
 
