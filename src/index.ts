@@ -175,6 +175,7 @@ interface SingleResult {
 	stopReason?: string;
 	errorMessage?: string;
 	step?: number;
+	running?: boolean;
 }
 
 interface SubagentDetails {
@@ -366,6 +367,7 @@ async function runSingleAgent(
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 		model,
 		step,
+		running: true,
 	};
 
 	const emitUpdate = () => {
@@ -518,6 +520,7 @@ async function runSingleAgent(
 		clearTimeout(timeout);
 		clearInterval(watchdog);
 		currentResult.exitCode = exitCode;
+		currentResult.running = false;
 
 		if (timedOut) throw new Error(`Subagent timed out after ${timeoutMinutes} minute${timeoutMinutes > 1 ? "s" : ""}`);
 		if (watchdogKilled) return currentResult; // already marked as error with the subagent's error message
@@ -788,6 +791,7 @@ export default function (pi: ExtensionAPI) {
 						messages: [],
 						stderr: "",
 						usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
+						running: true,
 					};
 				}
 
@@ -900,7 +904,7 @@ export default function (pi: ExtensionAPI) {
 			if (args.chain && args.chain.length > 0) {
 				const agents = args.chain.map((s) => s.agent).join(" → ");
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 					theme.fg("muted", `${border.repeat(30)}`) +
 					"\n" +
 					theme.fg("accent", theme.bold(`chain (${args.chain.length} steps)`)) +
@@ -926,7 +930,7 @@ export default function (pi: ExtensionAPI) {
 			if (args.tasks && args.tasks.length > 0) {
 				const agents = args.tasks.map((t) => t.agent).join(", ");
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 					theme.fg("muted", `${border.repeat(30)}`) +
 					"\n" +
 					theme.fg("accent", theme.bold(`parallel (${args.tasks.length} tasks)`)) +
@@ -944,7 +948,7 @@ export default function (pi: ExtensionAPI) {
 			const agentName = args.agent || "...";
 			const preview = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}...` : args.task) : "...";
 			let text =
-				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
+				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 				theme.fg("muted", `${border.repeat(30)}`) +
 				"\n" +
 				theme.fg("accent", theme.bold(`single`)) +
@@ -1027,12 +1031,13 @@ export default function (pi: ExtensionAPI) {
 				}
 
 				const endTime = formatTimestamp(new Date());
+				const running = r.running === true;
 				let text =
-				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
-				"\n" +
-				theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
-				"\n" +
-				`${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
+					theme.fg("toolTitle", theme.bold(`🤖  ${running ? "SUBAGENT TASK START" : "SUBAGENT TASK END"} [${endTime}]`)) +
+					"\n" +
+					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
+					"\n" +
+					`${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
 			if (isError && r.stopReason) text += ` ${theme.fg("error", `[${r.stopReason}]`)}`;
 			if (isError && r.errorMessage) text += `\n${theme.fg("error", `Error: ${r.errorMessage}`)}`;
 			else if (displayItems.length === 0) text += `\n${theme.fg("muted", "(no output)")}`;
@@ -1059,6 +1064,7 @@ export default function (pi: ExtensionAPI) {
 			};
 
 			if (details.mode === "chain") {
+				const running = details.results.some((r) => r.running === true);
 				const successCount = details.results.filter((r) => r.exitCode === 0).length;
 				const icon = successCount === details.results.length ? theme.fg("success", "✓") : theme.fg("error", "✗");
 
@@ -1125,7 +1131,7 @@ export default function (pi: ExtensionAPI) {
 				const agents = details.results.map((r) => r.agent).join(" → ");
 				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  ${running ? "SUBAGENT TASK START" : "SUBAGENT TASK END"} [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
@@ -1217,7 +1223,7 @@ export default function (pi: ExtensionAPI) {
 				const agents = details.results.map((r) => r.agent).join(", ");
 				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK END [${endTime}]`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  ${isRunning ? "SUBAGENT TASK START" : "SUBAGENT TASK END"} [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
