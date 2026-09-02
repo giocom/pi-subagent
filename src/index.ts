@@ -81,6 +81,10 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
+function formatTimestamp(d: Date): string {
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 function formatToolCall(
 	toolName: string,
 	args: Record<string, unknown>,
@@ -891,11 +895,12 @@ export default function (pi: ExtensionAPI) {
 		renderCall(args, theme, _context) {
 			const scope: AgentScope = args.agentScope ?? "user";
 			const border = theme.fg("dim", "─");
+			const startTime = formatTimestamp(new Date());
 
 			if (args.chain && args.chain.length > 0) {
 				const agents = args.chain.map((s) => s.agent).join(" → ");
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT  `)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 					theme.fg("muted", `${border.repeat(30)}`) +
 					"\n" +
 					theme.fg("accent", theme.bold(`chain (${args.chain.length} steps)`)) +
@@ -921,7 +926,7 @@ export default function (pi: ExtensionAPI) {
 			if (args.tasks && args.tasks.length > 0) {
 				const agents = args.tasks.map((t) => t.agent).join(", ");
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT  `)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 					theme.fg("muted", `${border.repeat(30)}`) +
 					"\n" +
 					theme.fg("accent", theme.bold(`parallel (${args.tasks.length} tasks)`)) +
@@ -939,7 +944,7 @@ export default function (pi: ExtensionAPI) {
 			const agentName = args.agent || "...";
 			const preview = args.task ? (args.task.length > 60 ? `${args.task.slice(0, 60)}...` : args.task) : "...";
 			let text =
-				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT  `)) +
+				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT [${startTime}]`)) +
 				theme.fg("muted", `${border.repeat(30)}`) +
 				"\n" +
 				theme.fg("accent", theme.bold(`single`)) +
@@ -1021,8 +1026,9 @@ export default function (pi: ExtensionAPI) {
 					return container;
 				}
 
+				const endTime = formatTimestamp(new Date());
 				let text =
-				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT RESULT`)) +
+				theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
 				"\n" +
 				theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 				"\n" +
@@ -1117,8 +1123,9 @@ export default function (pi: ExtensionAPI) {
 
 				// Collapsed view
 				const agents = details.results.map((r) => r.agent).join(" → ");
+				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT RESULT`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
@@ -1208,8 +1215,9 @@ export default function (pi: ExtensionAPI) {
 
 				// Collapsed view (or still running)
 				const agents = details.results.map((r) => r.agent).join(", ");
+				const endTime = formatTimestamp(new Date());
 				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT RESULT`)) +
+					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK [${endTime}]`)) +
 					"\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
