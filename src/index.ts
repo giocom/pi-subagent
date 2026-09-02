@@ -1032,13 +1032,8 @@ export default function (pi: ExtensionAPI) {
 					return container;
 				}
 
-				const endTime = formatTimestamp(new Date());
-				const startTime = details.startTime ?? endTime;
-				const running = r.running === true;
-				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
-					(running ? "" : theme.fg("muted", ` → END [${endTime}]`)) +
-					"\n" +
+				const startTime = details.startTime ?? formatTimestamp(new Date());
+				let text = theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) + "\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
 					`${icon} ${theme.fg("toolTitle", theme.bold(r.agent))}${theme.fg("muted", ` (${r.agentSource})`)}`;
@@ -1134,11 +1129,7 @@ export default function (pi: ExtensionAPI) {
 
 				// Collapsed view
 				const agents = details.results.map((r) => r.agent).join(" → ");
-				const endTime = formatTimestamp(new Date());
-				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
-					(running ? "" : theme.fg("muted", ` → END [${endTime}]`)) +
-					"\n" +
+				let text = theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) + "\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
 					icon +
@@ -1228,11 +1219,7 @@ export default function (pi: ExtensionAPI) {
 
 				// Collapsed view (or still running)
 				const agents = details.results.map((r) => r.agent).join(", ");
-				const endTime = formatTimestamp(new Date());
-				let text =
-					theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) +
-					(isRunning ? "" : theme.fg("muted", ` → END [${endTime}]`)) +
-					"\n" +
+				let text = theme.fg("toolTitle", theme.bold(`🤖  SUBAGENT TASK START [${startTime}]`)) + "\n" +
 					theme.fg("muted", `${theme.fg("dim", "─").repeat(30)}`) +
 					"\n" +
 					`${icon} ${theme.fg("toolTitle", theme.bold("parallel "))}${theme.fg("accent", status)}` +
