@@ -81,8 +81,21 @@ function formatUsageStats(
 	return parts.join(" ");
 }
 
+const KST_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+	timeZone: "Asia/Seoul",
+	hourCycle: "h23",
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+	hour: "2-digit",
+	minute: "2-digit",
+});
+
 function formatTimestamp(d: Date): string {
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+	const parts = KST_FORMATTER.formatToParts(d);
+	const get = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((p) => p.type === type)?.value ?? "00";
+	return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
 }
 
 function formatToolCall(
