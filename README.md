@@ -22,7 +22,7 @@ Pi extension that delegates tasks to specialized subagents, each running in a se
 - **Output truncation** — huge subagent output is protected from flooding the parent context window. Final output (single / parallel / chain) is head-truncated at 50 KiB with a marker stating how many bytes were omitted; the complete output is preserved in the tool details (expand with Ctrl+O). Chain `{previous}` substitution is capped tighter at 32 KiB so one verbose step cannot bloat the next agent's prompt
 - **`subagent_manager` tool** — create, update, and delete agent definitions (`create` / `update` / `delete` on user- or project-scope `.md` files)
 - **`/subagents` command** — lists all available agents and their sources
-- **Built-in default agents** — on first load, five ready-to-use agents (`planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
+- **Built-in default agents** — on first load, six ready-to-use agents (`planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser`, `proofreader`) are installed to `~/.pi/agent/agents/`. Existing files are never overwritten, and installation can be skipped with `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`
 
 ## Agent Definition Format
 
@@ -50,7 +50,7 @@ Once installed, the extension registers a `subagent` tool. You can either ask th
 
 ### 1. Create an agent file
 
-Five default agents are installed automatically on first load into `~/.pi/agent/agents/` — edit or delete them as you like, they will never be overwritten. Set `PI_SUBAGENT_NO_DEFAULT_AGENTS=1` to disable the auto-install.
+Six default agents are installed automatically on first load into `~/.pi/agent/agents/` — edit or delete them as you like, they will never be overwritten. Set `PI_SUBAGENT_NO_DEFAULT_AGENTS=1` to disable the auto-install.
 
 | Agent | Role | Tools |
 |---|---|---|
@@ -59,6 +59,7 @@ Five default agents are installed automatically on first load into `~/.pi/agent/
 | `reviewer` | Reviews code changes for bugs, edge cases, security issues, and test gaps | read, grep, find, ls, bash |
 | `websearcher` | Researches external sources via web search / URL reading and structures the findings | websearch_searxng_web_search, websearch_web_url_read |
 | `agentbrowser` | Browser automation: navigates sites, fills forms, clicks, takes screenshots, extracts data, login, web app testing, Electron app automation — delegate all browser/web interaction tasks to it (via the `agent-browser` CLI) | bash, read |
+| `proofreader` | Publishing proofreading/proofreader: finds typos, spelling/grammar errors, and awkward or ungrammatical sentences; outputs diffs only (original / fixed / reason) instead of re-printing the whole text; given a file path, measures its size, sizes chunks from the model context budget, and proofreads chunk by chunk | bash, read, write |
 
 A typical pipeline: `planner` → `coder` → `reviewer` (use chain mode so each step receives the previous output via `{previous}`).
 

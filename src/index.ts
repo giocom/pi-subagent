@@ -590,7 +590,7 @@ const SubagentParams = Type.Object({
 });
 
 export default function (pi: ExtensionAPI) {
-	// Install default subagents (planner, coder, websearcher, reviewer, agentbrowser) if missing.
+	// Install default subagents (planner, coder, websearcher, reviewer, agentbrowser, proofreader) if missing.
 	const createdDefaults = installDefaultAgents();
 	if (createdDefaults.length > 0) {
 		console.log(`[pi-subagent] Installed default agents: ${createdDefaults.join(", ")}`);

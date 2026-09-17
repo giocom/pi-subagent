@@ -22,7 +22,7 @@
 - **출력 truncate** — 방대한 서브에이전트 출력이 부모 컨텍스트 윈도우를 오염시키지 않도록 보호합니다. 최종 출력(single / parallel / chain)은 50 KiB에서 head-truncate되고 생략된 바이트 수를 알리는 마커가 붙습니다. 전체 출력은 도구 디테일(Ctrl+O로 확장)에 보존됩니다. chain의 `{previous}` 치환은 다음 에이전트 프롬프트 부풀림을 막기 위해 32 KiB로 더 엄격하게 제한됩니다
 - **`subagent_manager` 도구** — 에이전트 정의 파일 추가/수정/삭제 (`create` / `update` / `delete`, 사용자·프로젝트 스코프의 `.md` 파일 편집)
 - **`/subagents` 명령** — 사용 가능한 모든 에이전트와 출처를 목록으로 표시
-- **내장 기본 에이전트** — 최초 로드 시 `planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser` 5개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다
+- **내장 기본 에이전트** — 최초 로드 시 `planner`, `coder`, `websearcher`, `reviewer`, `agentbrowser`, `proofreader` 6개의 에이전트를 `~/.pi/agent/agents/`에 자동 설치합니다. 기존 파일은 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`로 설치를 건너뛸 수 있습니다
 
 ## 에이전트 정의 형식
 
@@ -50,7 +50,7 @@ You are a meticulous code reviewer. Always check for null safety...
 
 ### 1. 에이전트 파일 만들기
 
-기본 에이전트 5개는 최초 로드 시 `~/.pi/agent/agents/`에 자동 설치됩니다. 자유롭게 수정 또는 삭제해도 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`을 설정하면 자동 설치가 비활성화됩니다.
+기본 에이전트 6개는 최초 로드 시 `~/.pi/agent/agents/`에 자동 설치됩니다. 자유롭게 수정 또는 삭제해도 절대 덮어쓰지 않으며, `PI_SUBAGENT_NO_DEFAULT_AGENTS=1`을 설정하면 자동 설치가 비활성화됩니다.
 
 | 에이전트 | 역할 | 도구 |
 |---|---|---|
@@ -59,6 +59,7 @@ You are a meticulous code reviewer. Always check for null safety...
 | `reviewer` | 코드 변경 사항 리뷰: 버그, 엣지 케이스, 보안 이슈, 테스트 공백 발견 | read, grep, find, ls, bash |
 | `websearcher` | 웹 검색 / URL 읽기로 외부 자료 조사 및 구조화 | websearch_searxng_web_search, websearch_web_url_read |
 | `agentbrowser` | 브라우저 자동화: 사이트 탐색, 폼 입력, 클릭, 스크린샷, 데이터 추출, 로그인, 웹앱 테스트, Electron 앱 자동화 — 모든 브라우저/웹 상호작용 작업은 이 에이전트에 위임 (`agent-browser` CLI 사용) | bash, read |
+| `proofreader` | 출판 교정·교열: 오타, 맞춤법 오류, 비문, 문맥상 어색한 표현을 찾아 **원문/수정/이유 diff만 출력** (전체 본문 재출력 금지). 파일 경로를 받으면 크기 확인 → 모델 컨텍스트 기반 청크 크기 산정 → 청크별 순차 교정 | bash, read, write |
 
 전형적인 파이프라인: `planner` → `coder` → `reviewer` (chain 모드로 각 단계가 `{previous}`를 통해 이전 결과를 받도록 구성).
 

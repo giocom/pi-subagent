@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("installDefaultAgents", () => {
-	it("creates all five default agent files", () => {
+	it("creates all six default agent files", () => {
 		const agentDir = makeTmpDir();
 		const created = installDefaultAgents(agentDir);
 
